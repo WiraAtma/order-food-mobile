@@ -7,7 +7,6 @@ class HttpRequest {
     BaseOptions(
       baseUrl: AppConfig.apiUrl,
       headers: {
-        "Content-Type": "application/json",
         "Accept": "application/json",
       },
       connectTimeout: const Duration(seconds: 10),
@@ -21,6 +20,13 @@ class HttpRequest {
           if (token != null) {
             options.headers['Authorization'] = 'Bearer $token';
           }
+
+          if (options.data is FormData) {
+            options.headers['Content-Type'] = 'multipart/form-data';
+          } else {
+            options.headers['Content-Type'] = 'application/json';
+          }
+
           return handler.next(options);
         },
       ),

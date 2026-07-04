@@ -1,3 +1,5 @@
+import 'package:order_food_mobile/core/utilities/json_parser.dart';
+
 class Menu {
   final int? id;
   final String name;
@@ -21,14 +23,14 @@ class Menu {
 
   factory Menu.fromJson(Map<String, dynamic> json) {
     return Menu(
-      id: json["id"],
-      name: json['name'],
-      description: json['description'],
-      price: json['price'],
-      image: json['image'],
-      category: json['category'],
-      createdAt: json['created_at'],
-      updatedAt: json['updated_at']
+      id: JsonParser.toIntOrNull(json['id']),
+      name: JsonParser.toStringValue(json['name']),
+      description: JsonParser.toStringValue(json['description']),
+      price: JsonParser.toInt(json['price']),
+      image: JsonParser.toStringOrNull(json['image']),
+      category: JsonParser.toStringValue(json['category']),
+      createdAt: JsonParser.toStringOrNull(json['created_at']),
+      updatedAt: JsonParser.toStringOrNull(json['updated_at']),
     );
   }
 
