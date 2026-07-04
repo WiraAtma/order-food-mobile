@@ -137,6 +137,8 @@ class _AdminPageState extends State<AdminPage> {
                             name: menu.name,
                             price: menu.price,
                             image: menu.image,
+                            onUpdated: dataMenu,
+                            id: menu.id,
                           );
                         }),
                       ),

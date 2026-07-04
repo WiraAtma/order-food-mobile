@@ -24,6 +24,20 @@ class MenuServices {
     }
   }
 
+  Future<Menu> getDetailMenu(int id) async {
+    try {
+      final response = await HttpRequest.get('/menus/$id');
+
+      return responseMapper(response, (data) => Menu.fromJson(data));
+    } on DioException catch (e) {
+      final message = DioErrorHandler.handle(
+        e,
+        fallback: 'Gagal mendapatkan detail menu',
+      );
+      throw Exception(message);
+    }
+  }
+
   Future<Menu> createMenu({
     required String name,
     required String description,
@@ -48,6 +62,49 @@ class MenuServices {
       return responseMapper(response, (data) => Menu.fromJson(data));
     } on DioException catch (e) {
       final message = DioErrorHandler.handle(e, fallback: 'Gagal menambah menu');
+      throw Exception(message);
+    }
+  }
+
+  Future<Menu> updateMenu({
+    required int id,
+    required String name,
+    required String description,
+    required int price,
+    required String category,
+    File? image,
+  }) async {
+    try {
+      final formData = FormData.fromMap({
+        'name': name,
+        'description': description,
+        'price': price,
+        'category': category,
+        '_method': 'PATCH',
+        if (image != null)
+          'image': await MultipartFile.fromFile(
+            image.path,
+            filename: image.path.split('/').last,
+          ),
+      });
+
+      final response = await HttpRequest.post('/menus/$id', data: formData);
+
+      return responseMapper(response, (data) => Menu.fromJson(data));
+    } on DioException catch (e) {
+      final message = DioErrorHandler.handle(e, fallback: 'Gagal update menu');
+      throw Exception(message);
+    }
+  }
+
+  Future<void> deleteMenu(int id) async {
+    try {
+      await HttpRequest.delete('/menus/$id');
+    } on DioException catch (e) {
+      final message = DioErrorHandler.handle(
+        e,
+        fallback: 'Gagal Menghapus Menu',
+      );
       throw Exception(message);
     }
   }

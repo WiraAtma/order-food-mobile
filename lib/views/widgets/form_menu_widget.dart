@@ -1,193 +1,299 @@
 import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:order_food_mobile/core/constants/app_colors.dart';
+import 'package:order_food_mobile/core/configs/app_config.dart';
 import 'package:order_food_mobile/core/types/category_type.dart';
 import 'package:order_food_mobile/services/menu_services.dart';
 
 class FormMenuWidget extends StatefulWidget {
-  const FormMenuWidget({super.key});
+  final int? menuId;
+
+  const FormMenuWidget({super.key, this.menuId});
 
   @override
   State<FormMenuWidget> createState() => _FormMenuWidgetState();
 }
 
 class _FormMenuWidgetState extends State<FormMenuWidget> {
+  final _formKey = GlobalKey<FormState>();
   final menuService = MenuServices();
 
-  final formKey = GlobalKey<FormState>();
-  final menuController = TextEditingController();
-  final priceController = TextEditingController();
+  final nameController = TextEditingController();
   final descriptionController = TextEditingController();
+  final priceController = TextEditingController();
 
-  CategoryType selectedCategory = CategoryType.food;
-  File? selectedImage;
+  CategoryType? selectedCategory;
+  File? pickedImage;
+  String? existingImage;
+
+  bool get isEditMode => widget.menuId != null;
+
+  bool isLoadingDetail = false;
   bool isSubmitting = false;
+  String? loadErrorMessage;
+  String? submitErrorMessage;
 
-  final picker = ImagePicker();
-
-  Future<void> pickImage() async {
-    final image = await picker.pickImage(source: ImageSource.gallery);
-
-    if (image == null) return;
-
-    setState(() {
-      selectedImage = File(image.path);
-    });
-  }
-
-  Future<void> submitForm() async {
-    if (!formKey.currentState!.validate()) return;
-
-    if (selectedImage == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Gambar wajib dipilih")),
-      );
-      return;
-    }
-
-    setState(() => isSubmitting = true);
-
-    try {
-      await menuService.createMenu(
-        name: menuController.text.trim(),
-        description: descriptionController.text.trim(),
-        price: int.parse(priceController.text),
-        category: selectedCategory.apiValue ?? selectedCategory.name,
-        image: selectedImage!,
-      );
-
-      if (!mounted) return;
-      Navigator.pop(context, true); 
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
-      );
-    } finally {
-      if (mounted) setState(() => isSubmitting = false);
-    }
+  @override
+  void initState() {
+    super.initState();
+    if (isEditMode) fetchDetail();
   }
 
   @override
   void dispose() {
-    menuController.dispose();
-    priceController.dispose();
+    nameController.dispose();
     descriptionController.dispose();
+    priceController.dispose();
     super.dispose();
+  }
+
+  Future<void> fetchDetail() async {
+    setState(() {
+      isLoadingDetail = true;
+      loadErrorMessage = null;
+    });
+
+    try {
+      final menu = await menuService.getDetailMenu(widget.menuId!);
+      if (!mounted) return;
+
+      setState(() {
+        nameController.text = menu.name;
+        descriptionController.text = menu.description;
+        priceController.text = menu.price.toString();
+        existingImage = menu.image;
+        selectedCategory = CategoryType.values.firstWhere(
+          (c) => c.apiValue == menu.category,
+          orElse: () => CategoryType.all,
+        );
+        isLoadingDetail = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        loadErrorMessage = e.toString();
+        isLoadingDetail = false;
+      });
+    }
+  }
+
+  Future<void> pickImage() async {
+    final file = await ImagePicker().pickImage(source: ImageSource.gallery);
+    if (file != null) setState(() => pickedImage = File(file.path));
+  }
+
+  Future<void> submit() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    if (!isEditMode && pickedImage == null) {
+      setState(() => submitErrorMessage = "Gambar wajib diisi");
+      return;
+    }
+
+    setState(() {
+      isSubmitting = true;
+      submitErrorMessage = null;
+    });
+
+    try {
+      if (isEditMode) {
+        await menuService.updateMenu(
+          id: widget.menuId!,
+          name: nameController.text,
+          description: descriptionController.text,
+          price: int.parse(priceController.text),
+          category: selectedCategory!.apiValue!,
+          image: pickedImage,
+        );
+      } else {
+        await menuService.createMenu(
+          name: nameController.text,
+          description: descriptionController.text,
+          price: int.parse(priceController.text),
+          category: selectedCategory!.apiValue!,
+          image: pickedImage!,
+        );
+      }
+
+      if (!mounted) return;
+      Navigator.of(context).pop(true);
+    } catch (e) {
+      setState(() {
+        submitErrorMessage = e.toString();
+        isSubmitting = false;
+      });
+    }
+  }
+
+  InputDecoration _decoration(String label, {String? prefixText}) {
+    return InputDecoration(
+      labelText: label,
+      prefixText: prefixText,
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Row(
-        children: [
-          Icon(Icons.add),
-          SizedBox(width: 5),
-          Text("Tambah Menu Baru"),
-        ],
-      ),
-      titleTextStyle: TextStyle(fontSize: 20, color: AppColors.darkColor),
-      content: SingleChildScrollView(
-        child: Form(
-          key: formKey,
-          child: Column(
-            spacing: 20,
-            children: [
-              TextFormField(
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return "Nama Menu Wajib Diisi";
-                  }
-                  return null;
-                },
-                controller: menuController,
-                decoration: InputDecoration(
-                  border: OutlineInputBorder(),
-                  hintText: "Masukkan Nama Menu",
-                  label: Text("Menu*"),
-                ),
-              ),
-              TextFormField(
-                controller: priceController,
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return "Harga wajib diisi";
-                  }
-          
-                  if (int.tryParse(value) == null) {
-                    return "Harga harus berupa angka";
-                  }
-          
-                  return null;
-                },
-                keyboardType: TextInputType.number,
-                decoration: InputDecoration(
-                  border: OutlineInputBorder(),
-                  prefix: Text("Rp "),
-                  label: Text("Harga (Rp)*"),
-                ),
-              ),
-              DropdownButtonFormField<CategoryType>(
-                initialValue: selectedCategory,
-                decoration: InputDecoration(border: OutlineInputBorder()),
-                items: CategoryType.values.map((category) {
-                  return DropdownMenuItem(
-                    value: category,
-                    child: Text(category.label),
-                  );
-                }).toList(),
-                onChanged: (value) {
-                  if (value == null) return;
-          
-                  setState(() {
-                    selectedCategory = value;
-                  });
-                },
-              ),
-              TextFormField(
-                controller: descriptionController,
-                maxLines: 4,
-                decoration: const InputDecoration(
-                  border: OutlineInputBorder(),
-                  labelText: "Deskripsi (optional)",
-                ),
-              ),
-              if (selectedImage != null)
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: Image.file(selectedImage!, height: 150, fit: BoxFit.cover),
-                ),
-          
-              OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(
-                  minimumSize: Size(double.infinity, 50),
-                ),
-                onPressed: pickImage,
-                icon: Icon(Icons.image),
-                label: Text("Pilih Gambar"),
-              ),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  onPressed: isSubmitting ? null : submitForm, 
-                  child: isSubmitting
-                      ? SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : Text("Simpan"),
-                ),
-              ),
-            ],
-          ),
+    return Dialog(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: SizedBox(
+          width: MediaQuery.of(context).size.width * 0.9,
+          child: _buildContent(),
         ),
       ),
+    );
+  }
+
+  Widget _buildContent() {
+    if (isLoadingDetail) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 40),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 16),
+            Text("Memuat data menu..."),
+          ],
+        ),
+      );
+    }
+
+    if (loadErrorMessage != null) {
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.error_outline, color: Colors.red, size: 40),
+          const SizedBox(height: 12),
+          Text(loadErrorMessage!, textAlign: TextAlign.center),
+          const SizedBox(height: 16),
+          FilledButton(onPressed: fetchDetail, child: const Text("Coba Lagi")),
+        ],
+      );
+    }
+
+    return Form(
+      key: _formKey,
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              isEditMode ? "Update Menu" : "Tambah Menu",
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 16),
+
+            _buildImagePicker(),
+            const SizedBox(height: 16),
+
+            TextFormField(
+              controller: nameController,
+              decoration: _decoration("Nama Menu"),
+              validator: (v) => (v == null || v.isEmpty) ? "Nama wajib diisi" : null,
+            ),
+            const SizedBox(height: 12),
+
+            TextFormField(
+              controller: descriptionController,
+              decoration: _decoration("Deskripsi"),
+              maxLines: 3,
+              validator: (v) => (v == null || v.isEmpty) ? "Deskripsi wajib diisi" : null,
+            ),
+            const SizedBox(height: 12),
+
+            TextFormField(
+              controller: priceController,
+              decoration: _decoration("Harga", prefixText: "Rp "),
+              keyboardType: TextInputType.number,
+              validator: (v) => (v == null || v.isEmpty) ? "Harga wajib diisi" : null,
+            ),
+            const SizedBox(height: 12),
+
+            DropdownButtonFormField<CategoryType>(
+              initialValue: selectedCategory,
+              decoration: _decoration("Kategori"),
+              items: CategoryType.values
+                  .where((c) => c.apiValue != null)
+                  .map((c) => DropdownMenuItem(value: c, child: Text(c.name)))
+                  .toList(),
+              onChanged: (value) => setState(() => selectedCategory = value),
+              validator: (v) => v == null ? "Kategori wajib dipilih" : null,
+            ),
+
+            if (submitErrorMessage != null) ...[
+              const SizedBox(height: 12),
+              Text(submitErrorMessage!, style: const TextStyle(color: Colors.red)),
+            ],
+
+            const SizedBox(height: 20),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: isSubmitting ? null : () => Navigator.of(context).pop(false),
+                  child: const Text("Batal"),
+                ),
+                const SizedBox(width: 8),
+                FilledButton(
+                  onPressed: isSubmitting ? null : submit,
+                  child: isSubmitting
+                      ? const SizedBox(
+                          height: 16,
+                          width: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Text(isEditMode ? "Update" : "Simpan"),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildImagePicker() {
+    return Stack(
+      children: [
+        Container(
+          height: 150,
+          width: double.infinity,
+          decoration: BoxDecoration(
+            color: Colors.grey.shade200,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: pickedImage != null
+              ? Image.file(pickedImage!, fit: BoxFit.cover, width: double.infinity)
+              : (existingImage != null)
+                  ? Image.network(
+                      "${AppConfig.storageUrl}$existingImage",
+                      fit: BoxFit.cover,
+                      width: double.infinity,
+                    )
+                  : const Center(
+                      child: Icon(Icons.image_outlined, size: 40, color: Colors.grey),
+                    ),
+        ),
+        Positioned(
+          bottom: 8,
+          right: 8,
+          child: Material(
+            color: Colors.white,
+            shape: const CircleBorder(),
+            elevation: 3,
+            child: IconButton(
+              onPressed: pickImage,
+              icon: const Icon(Icons.camera_alt, color: Colors.black87),
+              tooltip: "Pilih Gambar",
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
